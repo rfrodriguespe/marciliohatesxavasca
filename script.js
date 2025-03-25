@@ -1,118 +1,115 @@
-const startButton = document.getElementById("startButton");
-const playerNameInput = document.getElementById("playerName");
-let playerName = "";
-
 const marcilio = document.getElementById("marcilio");
 const gameArea = document.getElementById("gameArea");
 const scoreDisplay = document.getElementById("score");
+const levelDisplay = document.getElementById("level");
 const livesDisplay = document.getElementById("lives");
 
-// Adiciona os arquivos de som
-const soundLoseLife = new Audio("ui.ogg"); // Som ao perder vida
-const soundGainPoint = new Audio("eca.ogg"); // Som ao ganhar ponto
+const soundLoseLife = new Audio("ui.ogg");
+const soundGainPoint = new Audio("eca.ogg");
 
 let score = 0;
 let lives = 3;
-let marcilioPosition = 175; // Posição inicial do Marcilio
-const moveAmount = 15; // Quantidade que Marcilio se move
-const fallingObjects = ["xavasca.png", "cool.png"]; // Imagens que vão cair
-let gameStarted = false; // Controle de estado do jogo
-
-startButton.addEventListener("click", () => {
-    playerName = playerNameInput.value.trim();
-    if (playerName === "") {
-        alert("Por favor, insira seu nome antes de começar!");
-        return;
-    }
-    document.getElementById("startScreen").style.display = "none";
-    document.getElementById("gameArea").style.display = "block";
-    startGame();
-});
+let level = 1;
+let fallSpeed = 5; // Velocidade inicial das peças caindo
+let marcilioPosition = gameArea.clientWidth / 2 - 50;
+const moveAmount = 15;
+const fallingObjects = ["xavasca.png", "cool.png"];
+let gameStarted = false;
+let fallingIntervals = [];
 
 document.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft" && marcilioPosition > 0) {
         marcilioPosition -= moveAmount;
     } else if (event.key === "ArrowRight" && marcilioPosition < gameArea.clientWidth - marcilio.clientWidth) {
         marcilioPosition += moveAmount;
+    } else if (event.key === "Enter" && !gameStarted) {
+        startGame();
     }
     marcilio.style.left = marcilioPosition + "px";
 });
 
+// Toque no "marcilio" para iniciar o jogo
+marcilio.addEventListener("touchstart", () => {
+    if (!gameStarted) {
+        startGame();
+    }
+});
+
+// Movimentação com arrastar
+let isDragging = false;
+
+marcilio.addEventListener("touchstart", () => {
+    isDragging = true;
+});
+
+document.addEventListener("touchmove", (event) => {
+    if (isDragging) {
+        const touch = event.touches[0];
+        const touchX = touch.clientX - gameArea.offsetLeft;
+        if (touchX >= 0 && touchX <= gameArea.clientWidth - marcilio.clientWidth) {
+            marcilioPosition = touchX;
+            marcilio.style.left = marcilioPosition + "px";
+        }
+    }
+});
+
+document.addEventListener("touchend", () => {
+    isDragging = false;
+});
+
 function startGame() {
     gameStarted = true;
-    setInterval(spawnFallingObject, 1000); // Gera um novo objeto a cada segundo
+    score = 0;
+    lives = 3;
+    level = 1;
+    fallSpeed = 5;
+    updateDisplay();
+    setInterval(spawnFallingObject, 1000);
 }
 
-// Ajuste na lógica de colisão
-let fallingIntervals = []; // Array para armazenar os intervalos dos objetos em queda
+function updateDisplay() {
+    scoreDisplay.innerText = `Score: ${score}`;
+    levelDisplay.innerText = `Level: ${level}`;
+    livesDisplay.innerText = `Lives: ${lives}`;
+}
 
 function spawnFallingObject() {
     const object = document.createElement("img");
     const randomIndex = Math.floor(Math.random() * fallingObjects.length);
     object.src = fallingObjects[randomIndex];
     object.classList.add("falling");
-    object.style.left = Math.random() * (gameArea.clientWidth - 50) + "px"; // Posição aleatória
-    object.style.top = "0px"; // Inicia no topo
+    object.style.left = Math.random() * (gameArea.clientWidth - 50) + "px";
+    object.style.top = "0px";
     gameArea.appendChild(object);
 
     let fallInterval = setInterval(() => {
-        let objectPosition = parseInt(object.style.top) || 0;
-        objectPosition += 5; // Velocidade de queda
+        let objectPosition = parseFloat(object.style.top) || 0;
+        objectPosition += fallSpeed;
+
+        object.style.top = objectPosition + "px";
 
         if (checkCollision(object, marcilio)) {
             if (object.src.includes("xavasca.png")) {
-                lives--; // Diminui a vida
-                soundLoseLife.play(); // Toca som de perda de vida
-                livesDisplay.innerText = "Lives: " + lives;
-                shakeMarcilio(); // Pausa queda e executa tremor
-                if (lives <= 0) endGame(); // Finaliza o jogo se as vidas chegarem a zero
+                lives--;
+                soundLoseLife.play();
             } else if (object.src.includes("cool.png")) {
-                score += 100; // Adiciona pontos
-                soundGainPoint.play(); // Toca som ao ganhar pontos
-                scoreDisplay.innerText = "Score: " + score;
-                shakeMarcilio(); // Pausa queda e executa tremor
+                score += 100;
+                soundGainPoint.play();
+                checkLevelUp();
             }
+            updateDisplay();
+            clearInterval(fallInterval);
+            object.remove();
+            if (lives <= 0) endGame();
+        } else if (objectPosition > gameArea.clientHeight) {
             clearInterval(fallInterval);
             object.remove();
         }
+    }, 50);
 
-        if (objectPosition > gameArea.clientHeight) {
-            clearInterval(fallInterval);
-            object.remove();
-        }
-
-        object.style.top = objectPosition + "px";
-    }, 50); // Atualiza a posição a cada 50ms
-
-    fallingIntervals.push(fallInterval); // Armazena o identificador do intervalo
+    fallingIntervals.push(fallInterval);
 }
 
-// Função para pausar todos os intervalos
-function pauseFallingObjects() {
-    fallingIntervals.forEach(interval => clearInterval(interval)); // Pausa todos os intervalos
-}
-
-// Função para retomar todos os intervalos
-function resumeFallingObjects() {
-    fallingIntervals.forEach((_, index) => {
-        fallingIntervals[index] = setInterval(() => {
-            const objects = document.querySelectorAll(".falling");
-            objects.forEach(object => {
-                let objectPosition = parseInt(object.style.top) || 0;
-                objectPosition += 5;
-
-                object.style.top = objectPosition + "px";
-
-                if (objectPosition > gameArea.clientHeight) {
-                    object.remove();
-                    clearInterval(fallingIntervals[index]);
-                }
-            });
-        }, 50);
-    });
-}
-
-// Função para verificar colisões
 function checkCollision(object, marcilio) {
     const objectRect = object.getBoundingClientRect();
     const marcilioRect = marcilio.getBoundingClientRect();
@@ -124,35 +121,48 @@ function checkCollision(object, marcilio) {
     );
 }
 
-function shakeMarcilio() {
-    // Cria o elemento de áudio
-    const audio = new Audio("ui.mp3");
-    audio.play(); // Toca o som
-
-    // Aplica o efeito de tremor
-    marcilio.classList.add("shake");
-    setTimeout(() => {
-        marcilio.classList.remove("shake");
-    }, 500); // Dura 500ms
-}
-
-function saveScore() {
-    const data = { name: playerName, score: score };
-    fetch("saveScore.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-    })
-    .then(response => response.text())
-    .then(result => console.log(result))
-    .catch(error => console.error("Erro ao salvar pontuação:", error));
+function checkLevelUp() {
+    if (score >= level * 300) {
+        level++;
+        fallSpeed += 2;
+        levelDisplay.innerText = `Level: ${level}`;
+    }
 }
 
 function endGame() {
-    saveScore();
-    document.getElementById("finalScore").innerText = score;
-    document.getElementById("endGamePopup").style.display = "flex";
+    window.alert(`Você perdeu! Sua pontuação foi: ${score}, no nível: ${level}`);
+    resetGame();
+}
 
-    document.getElementById("yesButton").onclick = () => document.location.reload();
-    document.getElementById("noButton").onclick = () => window.close();
+function resetGame() {
+    gameStarted = false;
+    score = 0;
+    lives = 3;
+    level = 1;
+    fallSpeed = 5;
+    updateDisplay();
+    const fallingObjects = document.querySelectorAll(".falling");
+    fallingObjects.forEach((object) => object.remove());
+    fallingIntervals.forEach(interval => clearInterval(interval));
+    fallingIntervals = [];
+}
+
+
+function checkLevelUp() {
+    if (score >= level * 500) {
+        level++;
+        if (level === 6) {
+            endWinningGame(); // Chama a função de fim de jogo para nível 6
+        } else {
+            fallSpeed += 2; // Aumenta a velocidade das peças caindo
+            levelDisplay.innerText = `Level: ${level}`; // Atualiza o nível na tela
+        }
+    }
+}
+
+// Função para encerrar o jogo no nível 6
+function endWinningGame() {
+    gameStarted = false; // Para o jogo
+    window.alert("Parabéns, você é um papa rosquinha!"); // Mensagem final
+    resetGame(); // Reinicia o jogo para o estado inicial
 }
